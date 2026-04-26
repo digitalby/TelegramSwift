@@ -56,6 +56,21 @@ A working patch lives at https://github.com/digitalby/TelegramSwift/tree/weekday
 - Screenshots are from a SwiftUI mockup that reproduces `CalendarMonthView`'s layout math (currentStartDay computation, column placement, .normal vs .media inset rules) byte-for-byte, but uses system fonts/colors instead of the Telegram theme. Visual fidelity is approximate; layout fidelity is exact.
 - Real-app screenshots are available on request, but require a full submodule build and the maintainer's preferred channel for those.
 
+## Build verification status
+
+Attempted on a fresh Apple Silicon machine with Xcode 26.2 / macOS 26.4 (homeserver). Result: **partial**.
+
+- ✅ All 10 native xcframeworks (OpenH264, OpenSSL, libopus, libvpx, Mozjpeg, libwebp, dav1d, ffmpeg, webrtc, tde2e) build clean after PR #1371's documented patches plus three additional fixes I had to apply locally:
+  - `core-xprojects/Mozjpeg/Mozjpeg/build.sh`: add `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (already in PR #1371).
+  - `submodules/tg_owt/src/api/candidate.h:108`: drop `ABSL_ATTRIBUTE_LIFETIME_BOUND` (Xcode 26 clang rejects it on void-return parameters; documented in PR #1371).
+  - `core-xprojects/ffmpeg/ffmpeg/build.sh:32`: bump `FF_VERSION="7.1"` → `"7.1.1"` (the actual ffmpeg dir was 7.1.1; documented in PR #1371).
+  - Plus: `brew install nasm meson` (also documented in PR #1371) and `softwareupdate --install-rosetta` for the x86_64 host-tool tde2e builds.
+- ✅ The Swift modules my patch consumes (`TGUIKit`, `CalendarUtils`) compile cleanly. `TelegramCore`, `Postbox`, `TelegramShare`'s Swift sources, and dozens of other dep modules also compile.
+- ❌ The full app link is blocked by a known Xcode 26 + downloaded Metal Toolchain integration bug: the linker is handed a positional argument `/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-…/Metal.xctoolchain/usr/lib/swift-5.0/macosx/libswiftAppKit.dylib`, but the cryptex-mounted Metal toolchain ships only Metal/AIR/GPU compilers — there is no Swift runtime under that path. The autolink synthesis picks the wrong toolchain. This is independent of the calendar patch (would happen on stock master too). It has been reproduced both in workspace mode and project-only mode.
+- The `Telegram` main app target's Swift sources (which is where `CalendarMonthController.swift` lives) were not reached because the `TelegramShare.appex` link blocks the build pipeline before the main target's compile begins. So strictly: **the patched file itself was not compiled end-to-end** in this environment.
+
+The patch uses only TGUIKit APIs (`TextView`, `TextViewLayout`, `View`, `theme.colors.grayText`, `.normal(.short)`, `setFrameOrigin`, `update(_:)`) used identically across the rest of the file and the wider codebase — it should compile cleanly on a working Xcode 26 environment (or earlier Xcode without the Metal Toolchain split).
+
 ---
 
 ## Submission checklist (for the user)
