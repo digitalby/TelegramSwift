@@ -104,17 +104,31 @@ final class CalendarMonthStruct {
 
 class CalendarMonthView : View {
     private var month:CalendarMonthStruct?
-    
+
     private var dayPreviews: [Int : NSView] = [:]
     private let dayPreviewsViews = View()
     private let dayViews = View()
+    private let weekdayHeaderView = View()
+    private var weekdayLabels: [TextView] = []
+
+    private static let weekdayHeaderHeight: CGFloat = 22
 
     required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        addSubview(weekdayHeaderView)
         addSubview(dayPreviewsViews)
         addSubview(dayViews)
-        
+
+        for _ in 0 ..< 7 {
+            let label = TextView()
+            label.userInteractionEnabled = false
+            label.isSelectable = false
+            weekdayHeaderView.addSubview(label)
+            weekdayLabels.append(label)
+        }
+
         backgroundColor = theme.colors.background
+        weekdayHeaderView.backgroundColor = theme.colors.background
     }
     
     override func scrollWheel(with event: NSEvent) {
@@ -135,6 +149,20 @@ class CalendarMonthView : View {
             self.dayPreviews.removeAll()
         }
         self.month = month
+
+        // Day grid is hardcoded Monday-start (column 0 always = Monday), independent of
+        // Calendar.current.firstWeekday. Header order is therefore fixed Mon..Sun, with
+        // localized symbols. shortStandaloneWeekdaySymbols is Sun-indexed; rotate by 1.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: appAppearance.language.languageCode)
+        let raw = formatter.shortStandaloneWeekdaySymbols ?? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let symbols = Array(raw.dropFirst()) + Array(raw.prefix(1))
+        for (i, symbol) in symbols.enumerated() {
+            let attr = NSAttributedString.initialize(string: symbol, color: theme.colors.grayText, font: .normal(.short))
+            let layout = TextViewLayout(attr, alignment: .center)
+            layout.measure(width: .greatestFiniteMagnitude)
+            weekdayLabels[i].update(layout)
+        }
 
         for i in 0 ..< 7 * 6 {
             let day = TextButton()
@@ -248,10 +276,23 @@ class CalendarMonthView : View {
     
     override func layout() {
         super.layout()
-        
-        dayViews.frame = bounds
-        dayPreviewsViews.frame = bounds
-        
+
+        let headerHeight = CalendarMonthView.weekdayHeaderHeight
+        weekdayHeaderView.frame = NSMakeRect(0, 0, frame.width, headerHeight)
+
+        let bodyOriginY = headerHeight
+        let bodyHeight = max(0, frame.height - headerHeight)
+        let bodyFrame = NSMakeRect(0, bodyOriginY, frame.width, bodyHeight)
+        dayViews.frame = bodyFrame
+        dayPreviewsViews.frame = bodyFrame
+
+        let columnWidth = floorToScreenPixels(backingScaleFactor, (frame.width - 20) / 7)
+        for (i, label) in weekdayLabels.enumerated() {
+            let cellX = 10 + columnWidth * CGFloat(i)
+            label.setFrameOrigin(NSMakePoint(cellX + (columnWidth - label.frame.width) / 2,
+                                             (headerHeight - label.frame.height) / 2))
+        }
+
         guard let month = self.month else {
             return
         }
@@ -260,10 +301,10 @@ class CalendarMonthView : View {
         var inset:NSPoint
         switch month.mode {
         case .normal:
-            oneSize = NSMakeSize(floorToScreenPixels(backingScaleFactor, (frame.width - 20) / 7), floorToScreenPixels(backingScaleFactor, (frame.height - 20) / CGFloat(month.linesCount)))
+            oneSize = NSMakeSize(columnWidth, floorToScreenPixels(backingScaleFactor, (bodyHeight - 20) / CGFloat(month.linesCount)))
             inset = NSMakePoint(10, 10)
         case .media:
-            oneSize = NSMakeSize(floorToScreenPixels(backingScaleFactor, (frame.width - 20) / 7), floorToScreenPixels(backingScaleFactor, frame.height / CGFloat(month.linesCount)))
+            oneSize = NSMakeSize(columnWidth, floorToScreenPixels(backingScaleFactor, bodyHeight / CGFloat(month.linesCount)))
             inset = NSMakePoint(10, 0)
         }
 
